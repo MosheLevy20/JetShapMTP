@@ -56,8 +56,7 @@ ClassImp(StJetShapeMTPMaker)
 
 
 /*To Do
-figure out what accept track did besides regular cuts
-test comment
+
 */
 
 
@@ -66,7 +65,7 @@ StJetShapeMTPMaker::StJetShapeMTPMaker(const char* name, StPicoDstMaker *picoMak
 {
   //Important switches
   doUsePrimTracks = kFALSE;
-  doppAnalysis = kTRUE;
+  doppAnalysis = kFALSE;
   fDoEffCorr = kFALSE;
 
   //Impportant cutoff values 
@@ -387,6 +386,7 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     
     TObjArray fConstituents = moeGetJetConstituents(jet);
     //TObjArray fConstituents = moeGetJetConstituentsSubbed(jet);
+    if (fConstituents.GetEntries() < 2) continue;
     fillTrackQA(0, fConstituents, ptBin, centBin);
 
     double LeSub = calculate_lesub(fConstituents);
@@ -419,7 +419,7 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     //MIXED EVENTS INDEX = 2
     //if(pool->IsReady() || pool->NTracksInPool() > fNMIXtracks || pool->GetCurrentNEvents() >= fNMIXevents) {
       //cout<<"pool->IsReady()"<<pool->IsReady();
-    
+    if (fDoEventMixing == 0) continue;
     int nMixedEvents = pool->GetCurrentNEvents();
     if (nMixedEvents >= fNMIXevents) {
       vector<TObjArray> meTracksList = GetMixedEventTracks(pool, jetEta, jetPhi);
@@ -431,7 +431,7 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
           double meGirth = calculate_girth(meTracks, jetpt, refEta, jetPhi);
           double mePtD = calculate_ptd(meTracks);
           fillJetShapes(2, meLeSub, meGirth, mePtD, ptBin, centBin, 1.0/nMixedEvents);
-	  meTracks.Clear();
+	         meTracks.Clear();
       }
       meTracksList.clear();
     }
