@@ -198,6 +198,8 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
 
     static const int nPtBins = 3;
     static const int nCentBins = 6;
+
+    static const int nMiscPlots = 3;
     
     const double jetRadius = 0.3;
     const float fJetEtaCut =1-0.3;
@@ -226,6 +228,8 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
     string PtBinNames[nPtBins] = {"All", "15-25", ">25"};
     string CentBinNames[nCentBins] = {"All", "0-10", "10-30","30-50","50-80","80-100"};
     string JetShapeNames[nJetShapeTypes] = {"Lesub","Girth","PtD"};
+
+    string MiscNames[nMiscPlots] = {"pt","r", "numConstits"};
     //0-10, 10-20, 20-50, 
     //15-20,20-40,10-15
    
@@ -249,6 +253,9 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
     //types: Lesub, Girth, PtD
     //BGSubMethods: all kinds
     TH1F           *fHistJetShapes[nJetShapeTypes][nJetShapeBGSMethods][nPtBins][nCentBins];
+
+
+    TH1F           *fHistMisc[nMiscPlots][nPtBins][nCentBins];
     
     
     

@@ -394,6 +394,22 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     double PtD = calculate_ptd(fConstituents);
     fillJetShapes(0, LeSub, Girth, PtD, ptBin, centBin);
     fConstituents.Clear();
+
+    //figuring out where weird girth is coming from
+    if (Girth > 0.3){
+      int num_constits = fConstituents.GetEntries();
+      for (unsigned j = 0; j < num_constits; j++) {
+        StFemtoTrack *currTrk = static_cast<StFemtoTrack*>(arr.At(j));
+        double trk_r = sqrt(pow(jet_eta - currTrk->Eta(), 2)+ pow(TVector2::Phi_0_2pi(jet_phi) - currTrk->Phi_0_2pi(), 2));
+        double trk_pt = currTrk->Pt();
+        fHistMisc[0][ptBin][centBin]->Fill(trk_pt);
+        fHistMisc[1][ptBin][centBin]->Fill(trk_r);
+        fHistMisc[0][0][0]->Fill(trk_pt);
+        fHistMisc[1][0][0]->Fill(trk_r);
+      }
+      fHistMisc[2][ptBin][centBin]->Fill(num_constits);
+      fHistMisc[2][0][0]->Fill(num_constits);
+    }
     
     //============================================
     //                  ETA REF
@@ -706,6 +722,16 @@ StJetShapeMTPMaker::~StJetShapeMTPMaker()
       }
     }
   }
+  for (int i = 0; i < nMiscPlots; ++i)
+  {
+    for (int j = 0; j < nPtBins; ++j)
+    {
+      for (int k = 0; k < nCentBins; ++k)
+      {
+        if (fHistMisc[i][j][k]) delete fHistMisc[i][j][k];        
+      }
+    }
+  }
 
   fPoolMgr->ClearPools();
   
@@ -779,7 +805,9 @@ void StJetShapeMTPMaker::DeclareHistograms() {
   //TODO make ranges and bin nums
   
   int QAranges[nJetQATypes][3] = {{50,0,100},{20,-1,1},{20,-1,7},{20,0,1}};
-  int shapeRanges[nJetShapeTypes][3] = {{6,0,30},{50,0,1},{10,0,1}};
+  //try for lesub {7,-5,30}
+  int shapeRanges[nJetShapeTypes][3] = {{7,0,30},{10,0,0.2},{10,0,1}};
+  int miscRanges[nMiscPlots][3] = {{100,0,30},{100,0,10},{100,0,100}};
   
   string typeName;
   string bgsName;
@@ -803,8 +831,8 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         {
           centName = CentBinNames[l];
           nbins = QAranges[i][0];
-    minX = QAranges[i][1];
-    maxX = QAranges[i][2];
+          minX = QAranges[i][1];
+          maxX = QAranges[i][2];
           fHistJetQA[i][j][k][l] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
         }
       }
@@ -822,9 +850,9 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         ptName = PtBinNames[k];
         for (int l = 0; l < nCentBins; ++l)
         {
-    nbins = QAranges[i][0];
-    minX = QAranges[i][1];
-    maxX = QAranges[i][2];
+          nbins = QAranges[i][0];
+          minX = QAranges[i][1];
+          maxX = QAranges[i][2];
           centName = CentBinNames[l];
           fHistTrackQA[i][j][k][l] = new TH1F(("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
         }
@@ -844,15 +872,37 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         ptName = PtBinNames[k];
         for (int l = 0; l < nCentBins; ++l)
         { 
-    nbins = shapeRanges[i][0];
-    minX = shapeRanges[i][1];
-    maxX = shapeRanges[i][2];
+          nbins = shapeRanges[i][0];
+          minX = shapeRanges[i][1];
+          maxX = shapeRanges[i][2];
           centName = CentBinNames[l];
           fHistJetShapes[i][j][k][l] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
         }
       }
     }
   }
+
+
+  for (int i = 0; i < nMiscPlots; ++i)
+  {
+    typeName = MiscNames[i];
+  
+    bgsName = "None";
+    for (int j = 0; j < nPtBins; ++j)
+    {
+      ptName = PtBinNames[j];
+      for (int k = 0; k < nCentBins; ++k)
+      { 
+        nbins = miscRanges[i][0];
+        minX = miscRanges[i][1];
+        maxX = miscRanges[i][2];
+        centName = CentBinNames[k];
+        fHistMisc[i][j][k] = new TH1F(("fHistMisc"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistMisc"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
+      }
+    }
+    
+  }
+  
 
   // =================================================================================================
   //COPIED FROM JOEL'S "StMyAnalysisMaker3"; CAN BE CLEANED UP
@@ -974,9 +1024,9 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nJetQABGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    if (fHistJetQA[i][j][k][l]->GetEntries() > 0){
-          fHistJetQA[i][j][k][l]->Write();  
-    }
+          if (fHistJetQA[i][j][k][l]->GetEntries() > 0){
+                fHistJetQA[i][j][k][l]->Write();  
+          }
         }
       }
     }
@@ -986,9 +1036,9 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nTrkBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    if (fHistTrackQA[i][j][k][l]->GetEntries() > 0){
-          fHistTrackQA[i][j][k][l]->Write();  
-    }
+          if (fHistTrackQA[i][j][k][l]->GetEntries() > 0){
+                fHistTrackQA[i][j][k][l]->Write();  
+          }
         }
       }
     }
@@ -998,13 +1048,22 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nJetShapeBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    //if (j == 3){
-      //cout<<"numEntriesRaw: "<<fHistJetShapes[i][j][k][l]->GetEntries()<<"numEntriesBG: "<<fHistJetShapes[i][2][k][l]->GetEntries()<<endl;
-      //fHistJetShapes[i][j][k][l]->Add(fHistJetShapes[i][2][k][l],-1);
-      //cout<<"j=3"<<"type: "<<i<<"numEntries: "<<fHistJetShapes[i][j][k][l]->GetEntries()<<endl;   }
-    if (fHistJetShapes[i][j][k][l]->GetEntries() > 0){
-      fHistJetShapes[i][j][k][l]->Write();  
+          if (fHistJetShapes[i][j][k][l]->GetEntries() > 0){
+            fHistJetShapes[i][j][k][l]->Write();  
+          }
+        }
+      }
     }
+  }
+
+  for (int i = 0; i < nMiscPlots; ++i)
+  {
+    for (int j = 0; j < nPtBins; ++j)
+    {
+      for (int k = 0; k < nCentBins; ++k)
+      {
+        if (fHistMisc[i][j][k]->GetEntries() > 0){
+          fHistMisc[i][j][k]->Write();  
         }
       }
     }
@@ -1048,6 +1107,17 @@ void StJetShapeMTPMaker::SetSumw2() {
         for (int l = 0; l < nCentBins; ++l){
           fHistJetShapes[i][j][k][l]->Sumw2();        
         }
+      }
+    }
+  }
+
+  for (int i = 0; i < nMiscPlots; ++i)
+  {
+    for (int j = 0; j < nPtBins; ++j)
+    {
+      for (int k = 0; k < nCentBins; ++k)
+      {
+        fHistMisc[i][j][k]->Sumw2();
       }
     }
   }
