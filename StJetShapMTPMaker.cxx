@@ -350,12 +350,12 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
   //the fact
   Int_t njets; 
   
-  //fJets = static_cast<TClonesArray*>(JetMaker->GetJetsBGsub());
-  fJets = static_cast<TClonesArray*>(JetMaker->GetJets());
+  fJets = static_cast<TClonesArray*>(JetMaker->GetJetsBGsub());
+  //fJets = static_cast<TClonesArray*>(JetMaker->GetJets());
   
   njets = fJets->GetEntries();
 
-  cout<<"njets: "<<njets <<endl;
+  //cout<<"njets: "<<njets <<endl;
 
   for(int ijet = 0; ijet < njets; ijet++) {  // JET LOOP
     // get jet pointer
@@ -366,7 +366,7 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
       continue;
     }
     
-    cout<<"a jet!" <<endl;
+    //cout<<"a jet!" <<endl;
     // get some jet parameters
     double jetarea = jet->Area();
     double jetpt = jet->Pt();
@@ -382,11 +382,11 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     }
     int centBin = getCentBin(fCentralityScaled);
 
-    fillJetQA(jetpt, jetEta, jetPhi, jetarea, ptBin, centBin);
     
-    TObjArray fConstituents = moeGetJetConstituents(jet);
-    //TObjArray fConstituents = moeGetJetConstituentsSubbed(jet);
+    //TObjArray fConstituents = moeGetJetConstituents(jet);
+    TObjArray fConstituents = moeGetJetConstituentsSubbed(jet);
     if (fConstituents.GetEntries() < 2) continue;
+    fillJetQA(jetpt, jetEta, jetPhi, jetarea, ptBin, centBin);
     fillTrackQA(0, fConstituents, ptBin, centBin);
 
     double LeSub = calculate_lesub(fConstituents);
@@ -394,7 +394,7 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     double PtD = calculate_ptd(fConstituents);
     fillJetShapes(0, LeSub, Girth, PtD, ptBin, centBin);
     fConstituents.Clear();
-
+    
     //============================================
     //                  ETA REF
     //============================================
@@ -483,6 +483,7 @@ TObjArray StJetShapeMTPMaker::moeGetJetConstituentsSubbed(StJet *jet)
    
     double trkpt = trk->Pt();
     double trkphi = trk->Phi_0_2pi();
+    //cout<<"femto track phi" << trkphi<<endl;
     double trketa = trk->Eta();
 
     //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
@@ -585,8 +586,9 @@ double StJetShapeMTPMaker::calculate_girth(TObjArray arr, double jet_pt, double 
   double g = 0.0;
   for (unsigned j = 0; j < arr.GetEntries(); j++) {
     StFemtoTrack *currTrk = static_cast<StFemtoTrack*>(arr.At(j));
-    
+    //cout<<"trk eta:"<<currTrk->Eta()<<" trk phi:"<<currTrk->Phi_0_2pi();
     double r = sqrt(pow(jet_eta - currTrk->Eta(), 2)+ pow(TVector2::Phi_0_2pi(jet_phi) - currTrk->Phi_0_2pi(), 2));
+    //cout<<" r:"<<r<<" trk pt:"<<currTrk->Pt()<<endl;
     g += (currTrk->Pt()/jet_pt)*r;
   }
 
