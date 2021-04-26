@@ -130,14 +130,12 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
     void                    FillEmcTriggers();                          // EmcTrigger counter histo
     void                    SetSumw2(); // set errors weights 
 
-    void                    fillTrackQA(int bgMethod, TObjArray arr, int ptBin, int centBin);
-    void                    fillJetQA(double jetpt, double jeteta, double jetphi, double jetarea, int ptBin, int centBin);
-    void                    fillJetShapes(int bgMethod, double LeSub, double Girth, double PtD, int ptBin, int centBin, double weight = 1.0);
+    void                    fillTrackQA(int bgMethod, TObjArray arr, int ptBin, int centBin, int constitCutBin);
+    void                    fillJetQA(double jetpt, double jeteta, double jetphi, double jetarea, int ptBin, int centBin, int constitCutBin);
+    void                    fillJetShapes(int bgMethod, double LeSub, double Girth, double PtD, int ptBin, int centBin, int constitCutBin, double weight = 1.0);
 
 
-
-
-    TObjArray               moeGetJetConstituents(StJet *jet);
+    TObjArray               moeGetJetConstituents(StJet *jet, double constitCut);
     TObjArray               moeGetJetConstituentsSubbed(StJet *jet);
     TObjArray               GetEtaRefTracks(Double_t jetEtaBG, Double_t jetPhiBG);
     vector<TObjArray>       GetMixedEventTracks(StEventPool *pool, Double_t jetEtaBG, Double_t jetPhiBG);
@@ -150,7 +148,7 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
     int                     getPtBin(float pt);
     int                     getCentBin(float cent);
 
-    bool                    withinCut(int type, double pt, double eta);
+    bool                    withinCut(int type, double pt, double eta, double constitCut);
 
     //Event Mixing
     TClonesArray           *CloneAndReduceTrackList();
@@ -198,11 +196,12 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
 
     static const int nPtBins = 3;
     static const int nCentBins = 6;
+    static const int nConstitCuts = 4;
 
     static const int nMiscPlots = 3;
     
-    const double jetRadius = 0.3;
-    const float fJetEtaCut =1-0.3;
+    const double jetRadius = 0.4;
+    const float fJetEtaCut =1-0.4;
     
     // Rho objects
     StRhoParameter         *GetRhoFromEvent(const char *name);
@@ -228,39 +227,23 @@ class StJetShapeMTPMaker : public StJetFrameworkPicoBase {
     string PtBinNames[nPtBins] = {"All", "15-25", ">25"};
     string CentBinNames[nCentBins] = {"All", "0-10", "10-30","30-50","50-80","80-100"};
     string JetShapeNames[nJetShapeTypes] = {"Lesub","Girth","PtD"};
+    string ConstitCutNames[nConstitCuts] = {"1.0", "1.5", "2.0", "2.5"};
+    double ConstitCuts[nConstitCuts] = {1.0, 1.5, 2.0, 2.5};
 
     string MiscNames[nMiscPlots] = {"pt","r", "numConstits"};
-    //0-10, 10-20, 20-50, 
-    //15-20,20-40,10-15
    
     
 
-    // Jet QA histos
-    //types: pt, eta, phi, area
-    //BGSubMethods: None, eta ref bg, event mixed bg //jet QA has only none
-    //pt bins: all, 15-25, 25-inf
-    //cent bins: all, the rest
-    //           [type][BGSubMethod][Pt Bin][Cent bin]
-    TH1F           *fHistJetQA[nJetQATypes][nJetQABGSMethods][nPtBins][nCentBins];
-
-    // Track QA histos
-    //types: pt, eta, phi
-    //BGSubMethods: all kinds
-
-    TH1F           *fHistTrackQA[nTrkQATypes][nTrkBGSMethods][nPtBins][nCentBins];
-
-    // Jet Shape histos
-    //types: Lesub, Girth, PtD
-    //BGSubMethods: all kinds
-    TH1F           *fHistJetShapes[nJetShapeTypes][nJetShapeBGSMethods][nPtBins][nCentBins];
+    TH1F           *fHistJetQA[nJetQATypes][nJetQABGSMethods][nPtBins][nCentBins][nConstitCuts];//!
 
 
-    TH1F           *fHistMisc[nMiscPlots][nPtBins][nCentBins];
-    
-    
-    
-   
-    
+    TH1F           *fHistTrackQA[nTrkQATypes][nTrkBGSMethods][nPtBins][nCentBins][nConstitCuts];//!
+
+
+    TH1F           *fHistJetShapes[nJetShapeTypes][nJetShapeBGSMethods][nPtBins][nCentBins][nConstitCuts];//!
+
+
+    TH1F           *fHistMisc[nMiscPlots][nPtBins][nCentBins];//!
     
     
 

@@ -3,7 +3,7 @@
 // Affiliation: Rutgers University
 //
 // ################################################################
-
+//jan25 mark reply with alias
 #include "StJetShapeMTPMaker.h"
 #include "StMemStat.h"
 
@@ -64,13 +64,13 @@ StJetShapeMTPMaker::StJetShapeMTPMaker(const char* name, StPicoDstMaker *picoMak
 {
   //Important switches
   doUsePrimTracks = kFALSE;
-  doppAnalysis = kFALSE;
+  doppAnalysis = kTRUE;
   fDoEffCorr = kFALSE;
 
   //Impportant cutoff values 
   fMinPtJet = 15.0;
   fMaxEventTrackPt = 30.0;
-  fTrackPtMinCut = 2.0; fTrackPtMaxCut = 30.0; //Track pt cutoffs
+  fTrackPtMinCut = 1.0; fTrackPtMaxCut = 30.0; //Track pt cutoffs
   fTrackPhiMinCut = 0.0; fTrackPhiMaxCut = 2.0*TMath::Pi();
   fTrackEtaMinCut = -1.0; fTrackEtaMaxCut = 1.0;
 
@@ -129,6 +129,7 @@ StJetShapeMTPMaker::StJetShapeMTPMaker(const char* name, StPicoDstMaker *picoMak
 //  Function: This method is called every event.
 //_____________________________________________________________________________
 Int_t StJetShapeMTPMaker::Make() {
+  //cout<<"make"<<endl;
   // zero out these global variables
   fCentralityScaled = 0.0, ref9 = 0, ref16 = 0;
 
@@ -241,6 +242,7 @@ Int_t StJetShapeMTPMaker::Make() {
   bool fHaveMB5event = CheckForMB(fRunFlag, StJetFrameworkPicoBase::kVPDMB5);
   bool fHaveMB30event = CheckForMB(fRunFlag, StJetFrameworkPicoBase::kVPDMB30);
   bool fHaveEmcTrigger = CheckForHT(fRunFlag, fEmcTriggerEventType);
+  if(!fHaveEmcTrigger) return kStOK;
   
   bool fRunForMB = kFALSE;  // used to differentiate pp and AuAu
   if(doppAnalysis)  fRunForMB = (fHaveMBevent) ? kTRUE : kFALSE;
@@ -276,68 +278,10 @@ Int_t StJetShapeMTPMaker::Make() {
   // get rho/area value from rho object     fRho->ls("");
   fRhoVal = fRho->GetVal();
 
-
-  //=================================================================================
-  //COPIED FROM JOEL'S "StMyAnalysisMaker3"; CAN BE CLEANED UP
-  // require event mixing
-  // 1. First get an event pool corresponding in mult (cent) and
-  //    zvertex to the current event. Once initialized, the pool
-  //    should contain nMix (reduced) events. This routine does not
-  //    pre-scan the chain. The first several events of every chain
-  //    will be skipped until the needed pools are filled to the
-  //    specified depth. If the pool categories are not too rare, this
-  //    should not be a problem. If they are rare, you could lose
-  //    statistics.
-
-  // 2. Collect the whole pool's content of tracks into one TObjArray
-  //    (bgTracks), which is effectively a single background super-event.
-
-  // 3. The reduced and bgTracks arrays must both be passed into
-  //    FillCorrelations() (diff. now). Also nMix should be passed in, so a weight
-  //    of 1./nMix can be applied.
-
-  // mix jets from triggered events with tracks from MB events
-  // get the trigger bit, need to change trigger bits between different runs
-
   // declare pool pointer
+  // pool no longer used, as event mixing was abandoned
   StEventPool *pool = 0x0;
-  // require event mixing
-  if(fDoEventMixing > 0) {
-    // convert back to integer bins for mixed event pool - 10% bins (0, 7), 5% bins (0, 15)
-    Int_t mixcentbin = TMath::Floor(fCentralityScaled / fCentBinSizeJS);
-    //cout<<"fCentralityScaled: "<<fCentralityScaled<<"  fCentBinSizeJS: "<<fCentBinSizeJS<<"  mixcentbin: "<<mixcentbin<<"  zVtx: "<<zVtx<<endl;
-    // get the generic event plane angle of the event: using tracks 0.2-2.0 GeV for calculation (option 4)
-    // for an angle (0, pi)    
-    ///const char *fEventPlaneMakerNameChTemp = fEventPlaneMakerName;
-    ///StEventPlaneMaker *EPMaker = static_cast<StEventPlaneMaker*>(GetMaker(Form("%s%i", fEventPlaneMakerNameChTemp, 4)));
-    ///double psi2 = (EPMaker) ? (double)EPMaker->GetTPCEP() : -999;
-    // initialize event pools - different cases for each dataset
-    if(fDoUseMultBins) {
-      pool = fPoolMgr->GetEventPool(kEventActivity, zVtx);
-      
-    } else {
-      pool = fPoolMgr->GetEventPool(mixcentbin, zVtx);      
-    }
-    // check if pool exists
-    if(!pool) {
-      Form("No pool found for centrality = %.1f, zVtx = %f", (double)mixcentbin, zVtx);
-      return kStOK;     
-    }
-  }
-  
-  //if(fHaveEmcTrigger) {
   RunJets(pool);  
-  //}     // inclusive jet case
-  // ==================================================================================================
-  // use only tracks from MB events
-  //if(fDoEventMixing > 0 && fRunForMB && (!fHaveEmcTrigger)) { // kMB5 or kMB30 - AuAu, kMB - pp (excluding HT)
-  if(fDoEventMixing > 0 && fRunForMB){// && pool->GetCurrentNEvents()<2) { // kMB5 or kMB30 - AuAu, kMB - pp (don't exclude HT)
-    // update pool: create a list of reduced objects. This speeds up processing and reduces memory consumption for the event pool
-    //cout<<"mb event"<<endl;
-    pool->UpdatePool(CloneAndReduceTrackList());
-    
-  } // MB + event mixing 
-  //============================================================= 
 
   return kStOK;
 }
@@ -345,71 +289,82 @@ Int_t StJetShapeMTPMaker::Make() {
 
 void StJetShapeMTPMaker::RunJets(StEventPool *pool)
 {
-  // need unsubbed tracks for jet shape (but use subbed jet pt) and need to do event mixing (and eta ref) sub on jet shape after
-  //the fact
   Int_t njets; 
   
-  fJets = static_cast<TClonesArray*>(JetMaker->GetJetsBGsub());
-  //fJets = static_cast<TClonesArray*>(JetMaker->GetJets());
+  //fJets = static_cast<TClonesArray*>(JetMaker->GetJetsBGsub()); //Use if constituent background subtractor is on
+  fJets = static_cast<TClonesArray*>(JetMaker->GetJets()); //Use if constituent background subtractor is off
   
   njets = fJets->GetEntries();
 
-  //cout<<"njets: "<<njets <<endl;
-
   for(int ijet = 0; ijet < njets; ijet++) {  // JET LOOP
     // get jet pointer
-    
     StJet *jet = static_cast<StJet*>(fJets->At(ijet));
     if(!jet){ 
       cout<<"no jet"<<endl;
       continue;
     }
-    
-    //cout<<"a jet!" <<endl;
+
     // get some jet parameters
     double jetarea = jet->Area();
-    double jetpt = jet->Pt();
+    double jetptUncorr = jet->Pt();
     double jetEta = jet->Eta();
     double jetPhi = TVector2::Phi_0_2pi(jet->Phi());
 
-    //trk = 0, jet = 1
-    if (!withinCut(1, jetpt, jetEta)) continue;
+    // Check if raw jet pt is within desired kinematic range. See comments in "withinCut" function definition
+    if (!withinCut(1, jetptUncorr, jetEta, 0)) continue;     
 
-    int ptBin = getPtBin(jetpt);
+    int ptBin = getPtBin(jetptUncorr); //get jet pt bin
     if (ptBin < 0){
       continue;
     }
-    int centBin = getCentBin(fCentralityScaled);
+    for(int iConstitCut = 0; iConstitCut < nConstitCuts; iConstitCut++) {//loop through the 4 constituent cuts
+      double currCut = ConstitCuts[iConstitCut];
 
-    
-    //TObjArray fConstituents = moeGetJetConstituents(jet);
-    TObjArray fConstituents = moeGetJetConstituentsSubbed(jet);
-    if (fConstituents.GetEntries() < 2) continue;
-    fillJetQA(jetpt, jetEta, jetPhi, jetarea, ptBin, centBin);
-    fillTrackQA(0, fConstituents, ptBin, centBin);
+      //get jet constituents that pass the current cut in a TObjArray. See comments in "moeGetJetConstituents" function definition
+      TObjArray fConstituents = moeGetJetConstituents(jet, currCut); 
+      //TObjArray fConstituents = moeGetJetConstituentsSubbed(jet);//Use if constituent background subtractor is used
 
-    double LeSub = calculate_lesub(fConstituents);
-    double Girth = calculate_girth(fConstituents, jetpt, jetEta, jetPhi);
-    double PtD = calculate_ptd(fConstituents);
-    fillJetShapes(0, LeSub, Girth, PtD, ptBin, centBin);
-    fConstituents.Clear();
+      double jetpt = 0;//jet pt, only including particles that pass the current cut
+      int nAbove25 = 0;//for keeping track of the number of constituents above 2.5 GeV
+      for (unsigned j = 0; j < fConstituents.GetEntries(); j++) {//loop through constituents of current jet
+        StFemtoTrack *trk = static_cast<StFemtoTrack*>(fConstituents.At(j));
+        double constituent_ptJ = trk->Pt();
+        jetpt += constituent_ptJ;
+        if (constituent_ptJ >= 2.5){
+          nAbove25 += 1;
+        }
+      }
+      if (nAbove25 < 2) break;//rejects jets without at least 2 particles above 2.5 gev
+      
+      int centBin = getCentBin(fCentralityScaled);
+
+      fillJetQA(jetpt, jetEta, jetPhi, jetarea, ptBin, centBin, iConstitCut);//fill jet (pt, eta, phi, area) histograms
+      fillTrackQA(0, fConstituents, ptBin, centBin, iConstitCut);//fill jet (pt, eta, phi) histograms, needs to be fixed
+
+      double LeSub = calculate_lesub(fConstituents);
+      double Girth = calculate_girth(fConstituents, jetpt, jetEta, jetPhi);
+      double PtD = calculate_ptd(fConstituents);
+      fillJetShapes(0, LeSub, Girth, PtD, ptBin, centBin, iConstitCut);// fill jet shape histograms
+      fConstituents.Clear();
+    }
     
+    //No longer used
     //============================================
     //                  ETA REF
     //============================================
     //ETA REF INDEX = 1 
 
-    double refEta = -jetEta;
+    // double refEta = -jetEta;
 
-    TObjArray fEtaRefTracks = GetEtaRefTracks(refEta, jetPhi);
-    fillTrackQA(1, fEtaRefTracks, ptBin, centBin);
-    double erLeSub = calculate_lesub(fEtaRefTracks);
-    double erGirth = calculate_girth(fEtaRefTracks, jetpt, refEta, jetPhi);
-    double erPtD = calculate_ptd(fEtaRefTracks);
+    // TObjArray fEtaRefTracks = GetEtaRefTracks(refEta, jetPhi);
+    // fillTrackQA(1, fEtaRefTracks, ptBin, centBin);
+    // double erLeSub = calculate_lesub(fEtaRefTracks);
+    // double erGirth = calculate_girth(fEtaRefTracks, jetpt, refEta, jetPhi);
+    // double erPtD = calculate_ptd(fEtaRefTracks);
 
-    fillJetShapes(1, erLeSub, erGirth, erPtD, ptBin, centBin);
-    
-    fEtaRefTracks.Clear();
+    // fillJetShapes(1, erLeSub, erGirth, erPtD, ptBin, centBin);
+    // cout<<"filled"<<endl;
+    // fEtaRefTracks.Clear();
     
 
     //============================================
@@ -418,30 +373,30 @@ void StJetShapeMTPMaker::RunJets(StEventPool *pool)
     //MIXED EVENTS INDEX = 2
     //if(pool->IsReady() || pool->NTracksInPool() > fNMIXtracks || pool->GetCurrentNEvents() >= fNMIXevents) {
       //cout<<"pool->IsReady()"<<pool->IsReady();
-    if (fDoEventMixing == 0) continue;
-    int nMixedEvents = pool->GetCurrentNEvents();
-    if (nMixedEvents >= fNMIXevents) {
-      vector<TObjArray> meTracksList = GetMixedEventTracks(pool, jetEta, jetPhi);
+    // if (fDoEventMixing == 0) continue;
+    // int nMixedEvents = pool->GetCurrentNEvents();
+    // if (nMixedEvents >= fNMIXevents) {
+    //   vector<TObjArray> meTracksList = GetMixedEventTracks(pool, jetEta, jetPhi);
 
-      for (int bgEvent = 0; bgEvent < nMixedEvents; ++bgEvent){
-          TObjArray meTracks = meTracksList[bgEvent];
-          fillTrackQA(2, meTracks, ptBin, centBin);
-          double meLeSub = calculate_lesub(meTracks);
-          double meGirth = calculate_girth(meTracks, jetpt, refEta, jetPhi);
-          double mePtD = calculate_ptd(meTracks);
-          fillJetShapes(2, meLeSub, meGirth, mePtD, ptBin, centBin, 1.0/nMixedEvents);
-           meTracks.Clear();
-      }
-      meTracksList.clear();
-    }
-    
-  }   
+    //   for (int bgEvent = 0; bgEvent < nMixedEvents; ++bgEvent){
+    //       TObjArray meTracks = meTracksList[bgEvent];
+    //       fillTrackQA(2, meTracks, ptBin, centBin);
+    //       double meLeSub = calculate_lesub(meTracks);
+    //       double meGirth = calculate_girth(meTracks, jetpt, refEta, jetPhi);
+    //       double mePtD = calculate_ptd(meTracks);
+    //       fillJetShapes(2, meLeSub, meGirth, mePtD, ptBin, centBin, 1.0/nMixedEvents);
+    //        meTracks.Clear();
+    //   }
+    //   meTracksList.clear();
+    // }  
+  }  
+  
 }
 
 
-
-TObjArray StJetShapeMTPMaker::moeGetJetConstituents(StJet *jet)
-{ 
+TObjArray StJetShapeMTPMaker::moeGetJetConstituents(StJet *jet, double constitCut)
+{ //returns jet constituents as TObjArray of StFemtoTracks
+  //retieves tracks directly from mPicoDst to ensure they are unaltered (was useful when constituent subractor was used)
   TObjArray constits(0);
   vector<fastjet::PseudoJet> jetConstituents = jet->GetJetConstituents();
   int nconstituentTracks = jetConstituents.size();
@@ -451,116 +406,115 @@ TObjArray StJetShapeMTPMaker::moeGetJetConstituents(StJet *jet)
     if(uid < 0.) continue; //makes sure we have the track array element
     //if uid = -1 its a ghost particle; otherwise its a tower; might want to use
 
-    StPicoTrack* tempTrk = static_cast<StPicoTrack*>(mPicoDst->track(uid));
-    StFemtoTrack *trk = new StFemtoTrack(tempTrk, Bfield, mVertex, doUsePrimTracks);
+    StPicoTrack* tempTrk = static_cast<StPicoTrack*>(mPicoDst->track(uid));//use uid to find track in mPicoDst
+    StFemtoTrack *trk = new StFemtoTrack(tempTrk, Bfield, mVertex, doUsePrimTracks);//Object class defined by Joel, more efficient than StPicoTrack
     if(!trk){ continue; }
-    //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
    
+    //get track pt eta phi
     double trkpt = trk->Pt();
     double trkphi = trk->Phi_0_2pi();
     double trketa = trk->Eta();
 
-    //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
-    if (!withinCut(0, trkpt, trketa)) continue; 
-    constits.Add(trk);
+    if (!withinCut(0, trkpt, trketa, constitCut)) continue;//check if track is within desired kinematic constraints
+
+    constits.Add(trk);//add current StFemtoTrack to TObjArray
   }
   return constits;
 }
 
 
-TObjArray StJetShapeMTPMaker::moeGetJetConstituentsSubbed(StJet *jet)
-{ 
-  TObjArray constits(0);
-  vector<fastjet::PseudoJet> jetConstituents = jet->GetJetConstituents();
-  int nconstituentTracks = jetConstituents.size();
-  for(int itrk = 0; itrk< nconstituentTracks; itrk++){
+// TObjArray StJetShapeMTPMaker::moeGetJetConstituentsSubbed(StJet *jet)
+// { 
+//   TObjArray constits(0);
+//   vector<fastjet::PseudoJet> jetConstituents = jet->GetJetConstituents();
+//   int nconstituentTracks = jetConstituents.size();
+//   for(int itrk = 0; itrk< nconstituentTracks; itrk++){
    
-    fastjet::PseudoJet track = jetConstituents.at(itrk);
-    StFemtoTrack *trk = new StFemtoTrack(track.px(), track.py(), track.pz());
-    if(!trk){ continue; }
-    //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
+//     fastjet::PseudoJet track = jetConstituents.at(itrk);
+//     StFemtoTrack *trk = new StFemtoTrack(track.px(), track.py(), track.pz());
+//     if(!trk){ continue; }
+//     //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
    
-    double trkpt = trk->Pt();
-    double trkphi = trk->Phi_0_2pi();
-    //cout<<"femto track phi" << trkphi<<endl;
-    double trketa = trk->Eta();
+//     double trkpt = trk->Pt();
+//     double trkphi = trk->Phi_0_2pi();
+//     //cout<<"femto track phi" << trkphi<<endl;
+//     double trketa = trk->Eta();
 
-    //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
-    if (!withinCut(0, trkpt, trketa)) continue; 
-    constits.Add(trk);
-  }
-  return constits;
-}
+//     //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
+//     if (!withinCut(0, trkpt, trketa)) continue; 
+//     constits.Add(trk);
+//   }
+//   return constits;
+// }
 
 
-
-TObjArray StJetShapeMTPMaker::GetEtaRefTracks(Double_t jetEtaBG, Double_t jetPhiBG){
+// TObjArray StJetShapeMTPMaker::GetEtaRefTracks(Double_t jetEtaBG, Double_t jetPhiBG){
   
-  Int_t ntracks = mPicoDst->numberOfTracks();
-  TObjArray etaRefTracks(0);
-  for(int itrack = 0; itrack < ntracks; itrack++){
+//   Int_t ntracks = mPicoDst->numberOfTracks();
+//   TObjArray etaRefTracks(0);
+//   for(int itrack = 0; itrack < ntracks; itrack++){
 
-    //StFemtoTrack *trk = static_cast<StFemtoTrack*>(mPicoDst->track(itrack));
-    StPicoTrack* tempTrk = static_cast<StPicoTrack*>(mPicoDst->track(itrack));
-    StFemtoTrack *trk = new StFemtoTrack(tempTrk, Bfield, mVertex, doUsePrimTracks);
+//     //StFemtoTrack *trk = static_cast<StFemtoTrack*>(mPicoDst->track(itrack));
+//     StPicoTrack* tempTrk = static_cast<StPicoTrack*>(mPicoDst->track(itrack));
+//     StFemtoTrack *trk = new StFemtoTrack(tempTrk, Bfield, mVertex, doUsePrimTracks);
     
-    if(!trk){ continue; }
-    //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
+//     if(!trk){ continue; }
+//     //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
     
-    double trkphi = trk->Phi_0_2pi();
-    double trketa = trk->Eta();
-    double trkpt = trk->Pt();
+//     double trkphi = trk->Phi_0_2pi();
+//     double trketa = trk->Eta();
+//     double trkpt = trk->Pt();
 
-    //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
-    if (!withinCut(0, trkpt, trketa)) continue; 
+//     //if (!(trkpt>fTrackPtMinCut && trkpt<30.0 && trketa>-1 && trketa<1)) continue;
+//     if (!withinCut(0, trkpt, trketa)) continue; 
 
-    double deltaEtaBG = 1.0*TMath::Abs(jetEtaBG - trketa);
-    double deltaPhiBG = 1.0*TMath::Abs(jetPhiBG - trkphi);
-    if(deltaPhiBG > 1.0*pi) deltaPhiBG = 2.0*pi - deltaPhiBG;
-    double deltaR = 1.0*TMath::Sqrt(deltaEtaBG*deltaEtaBG + deltaPhiBG*deltaPhiBG);
+//     double deltaEtaBG = 1.0*TMath::Abs(jetEtaBG - trketa);
+//     double deltaPhiBG = 1.0*TMath::Abs(jetPhiBG - trkphi);
+//     if(deltaPhiBG > 1.0*pi) deltaPhiBG = 2.0*pi - deltaPhiBG;
+//     double deltaR = 1.0*TMath::Sqrt(deltaEtaBG*deltaEtaBG + deltaPhiBG*deltaPhiBG);
 
-    if (deltaR > jetRadius) continue;
-    etaRefTracks.Add(trk);    
-  }
-  return etaRefTracks;
-}
+//     if (deltaR > jetRadius) continue;
+//     etaRefTracks.Add(trk);    
+//   }
+//   return etaRefTracks;
+// }
 
 
-vector<TObjArray> StJetShapeMTPMaker::GetMixedEventTracks(StEventPool *pool, Double_t jetEtaBG, Double_t jetPhiBG){
-  int nMix = pool->GetCurrentNEvents();
+// vector<TObjArray> StJetShapeMTPMaker::GetMixedEventTracks(StEventPool *pool, Double_t jetEtaBG, Double_t jetPhiBG){
+//   int nMix = pool->GetCurrentNEvents();
 
-  vector<TObjArray> bgTracksList;
-  TObjArray *bgTracks;
-  TObjArray bgFemtoTrks(0);
+//   vector<TObjArray> bgTracksList;
+//   TObjArray *bgTracks;
+//   TObjArray bgFemtoTrks(0);
 
-  for(int jMix = 0; jMix < nMix; jMix++) {
-    // get jMix'th event
-    bgTracks = pool->GetEvent(jMix);
-    const Int_t Nbgtrks = bgTracks->GetEntries();
-    for(int ibg = 0; ibg < Nbgtrks; ibg++) {
-      StFemtoTrack *trk = static_cast<StFemtoTrack*>(bgTracks->At(ibg));
+//   for(int jMix = 0; jMix < nMix; jMix++) {
+//     // get jMix'th event
+//     bgTracks = pool->GetEvent(jMix);
+//     const Int_t Nbgtrks = bgTracks->GetEntries();
+//     for(int ibg = 0; ibg < Nbgtrks; ibg++) {
+//       StFemtoTrack *trk = static_cast<StFemtoTrack*>(bgTracks->At(ibg));
 
-      if(!trk) continue;
-      //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
-      double trkphi = trk->Phi_0_2pi();
-      double trketa = trk->Eta();
-      double trkpt = trk->Pt();
-      if (!withinCut(0, trkpt, trketa)) continue; 
+//       if(!trk) continue;
+//       //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
+//       double trkphi = trk->Phi_0_2pi();
+//       double trketa = trk->Eta();
+//       double trkpt = trk->Pt();
+//       if (!withinCut(0, trkpt, trketa)) continue; 
       
-      double deltaEtaBG = 1.0*TMath::Abs(jetEtaBG - trketa);
-      double deltaPhiBG = 1.0*TMath::Abs(jetPhiBG - trkphi);
-      if(deltaPhiBG > 1.0*pi) deltaPhiBG = 2.0*pi - deltaPhiBG;
-      double deltaR = 1.0*TMath::Sqrt(deltaEtaBG*deltaEtaBG + deltaPhiBG*deltaPhiBG);
-      if (deltaR > jetRadius) continue;
+//       double deltaEtaBG = 1.0*TMath::Abs(jetEtaBG - trketa);
+//       double deltaPhiBG = 1.0*TMath::Abs(jetPhiBG - trkphi);
+//       if(deltaPhiBG > 1.0*pi) deltaPhiBG = 2.0*pi - deltaPhiBG;
+//       double deltaR = 1.0*TMath::Sqrt(deltaEtaBG*deltaEtaBG + deltaPhiBG*deltaPhiBG);
+//       if (deltaR > jetRadius) continue;
 
-      bgFemtoTrks.Add(trk);
+//       bgFemtoTrks.Add(trk);
 
-    }
-    bgTracksList.push_back(bgFemtoTrks);
-    //cuttoffs?   
-  }
-  return bgTracksList;
-}
+//     }
+//     bgTracksList.push_back(bgFemtoTrks);
+//     //cuttoffs?   
+//   }
+//   return bgTracksList;
+// }
 
 
 double StJetShapeMTPMaker::calculate_lesub(TObjArray arr){
@@ -583,13 +537,18 @@ double StJetShapeMTPMaker::calculate_lesub(TObjArray arr){
 
 double StJetShapeMTPMaker::calculate_girth(TObjArray arr, double jet_pt, double jet_eta, double jet_phi){
   double g = 0.0;
+  double denominator = 0.0;
   for (unsigned j = 0; j < arr.GetEntries(); j++) {
     StFemtoTrack *currTrk = static_cast<StFemtoTrack*>(arr.At(j));
-    //cout<<"trk eta:"<<currTrk->Eta()<<" trk phi:"<<currTrk->Phi_0_2pi();
-    double r = sqrt(pow(jet_eta - currTrk->Eta(), 2)+ pow(TVector2::Phi_0_2pi(jet_phi) - currTrk->Phi_0_2pi(), 2));
-    //cout<<" r:"<<r<<" trk pt:"<<currTrk->Pt()<<endl;
-    g += (currTrk->Pt()/jet_pt)*r;
+
+    double deltaPhi = TMath::Abs(TVector2::Phi_0_2pi(jet_phi) - currTrk->Phi_0_2pi());
+    if(deltaPhi > 1.0*pi) deltaPhi = 2.0*pi - deltaPhi;
+    double r = sqrt(pow(jet_eta - currTrk->Eta(), 2)+ pow(deltaPhi, 2));
+    
+    denominator += currTrk->Pt();
+    g += currTrk->Pt()*r;
   }
+  g /= denominator;
 
   return g;
 }
@@ -618,10 +577,10 @@ double StJetShapeMTPMaker::calculate_energy(double px,double py,double pz){
 
 
 int StJetShapeMTPMaker::getPtBin(float pt){
-  if (pt>15.0 && pt<= 25.0){
+  if (pt>=15.0 && pt< 25.0){
     return 1;
   }
-  else if (pt>25.0){
+  else if (pt>=25.0){
     return 2;
   }
   else{
@@ -647,13 +606,13 @@ int StJetShapeMTPMaker::getCentBin(float cent){
   }
 }
 
-bool StJetShapeMTPMaker::withinCut(int type, double pt, double eta){
+bool StJetShapeMTPMaker::withinCut(int type, double pt, double eta, double constitCut){
   //trk = 0, jet = 1
   if (type == 0){
-    return (pt>fTrackPtMinCut && pt<30.0 && eta>-1 && eta<1);
+    return (pt>=constitCut && pt<=30.0 && eta>-1 && eta<1);
   }
   else{
-    return (pt>fMinPtJet && TMath::Abs(eta)<fJetEtaCut);// && TMath::Abs(eta)> jetRadius);
+    return (pt>=fMinPtJet && TMath::Abs(eta)<fJetEtaCut);// && TMath::Abs(eta)> jetRadius);
   }
 }
 
@@ -670,8 +629,10 @@ StJetShapeMTPMaker::~StJetShapeMTPMaker()
       {
         for (int l = 0; l < nCentBins; ++l)
         {
-
-          if (fHistJetQA[i][j][k][l]) delete fHistJetQA[i][j][k][l];        
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            if (fHistJetQA[i][j][k][l][m]) delete fHistJetQA[i][j][k][l][m];     
+          }   
         }
       }
     }
@@ -685,7 +646,10 @@ StJetShapeMTPMaker::~StJetShapeMTPMaker()
       {
         for (int l = 0; l < nCentBins; ++l)
         {
-          if (fHistTrackQA[i][j][k][l]) delete fHistTrackQA[i][j][k][l];        
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            //if (fHistTrackQA[i][j][k][l][m]) delete fHistTrackQA[i][j][k][l][m];  
+          }      
         }
       }
     }
@@ -700,7 +664,10 @@ StJetShapeMTPMaker::~StJetShapeMTPMaker()
       {
         for (int l = 0; l < nCentBins; ++l)
         {
-          if (fHistJetShapes[i][j][k][l]) delete fHistJetShapes[i][j][k][l];        
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            if (fHistJetShapes[i][j][k][l][m]) delete fHistJetShapes[i][j][k][l][m];   
+          }     
         }
       }
     }
@@ -755,43 +722,51 @@ Int_t StJetShapeMTPMaker::Finish() {
 // initialization of histograms done here + global object setup
 //________________________________________________________________________
 void StJetShapeMTPMaker::DeclareHistograms() {
+  //Histograms are stored in multidimensional TH1F arrays
+  //In this function 3 such arrays (for Jet QA, Track QA, and Jet Shape) are initialized with empty histograms
+
   // Jet QA histos
-  //types: pt, eta, phi, area
-  //BGSubMethods: None, constit, eta ref, eta ref subbed
-  //pt bins: all, 15-25, 25-inf
-  //cent bins: all, 0-10, 10-30, 30-50, 50-70, 70-100
-  //           [type][BGSubMethod][Pt Bin][Cent bin]
-  //TH1F           *fHistJetQA[4][3][3][6];
+  // array axes are:
+  //(a) types: pt, eta, phi, area
+
+  //(b) BGSubMethods: None, constit, eta ref, eta ref subbed (got rid of all except "None")
+
+  //(c) pt bins: all, 15-25, 25-inf
+
+  //(d) cent bins: all, 0-10, 10-30, 30-50, 50-70, 70-100
+
+  //(e) constituent cuts: 1, 1.5, 2, 2.5
+
 
   // Track QA histos
   //types: pt, eta, phi
-  //BGSubMethods: None, constit, eta ref
-  //pt, cent bins: same as jet QA
-  //           [type][BGSubMethod][Pt Bin][Cent bin]
+  //pt, cent bins, and constituent cuts: same as jet QA
 
 
   // Jet Shape histos
   //types: Lesub, Girth, PtD
   //everything else same as jet QA
 
-
-  //TODO make ranges and bin nums
-  
-  int QAranges[nJetQATypes][3] = {{50,0,100},{20,-1,1},{20,-1,7},{20,0,1}};
-  int shapeRanges[nJetShapeTypes][3] = {{6,0,30},{50,0,1},{10,0,1}};
+  //number of bins and x axis ranges
+  double QAranges[nJetQATypes][3] = {{50,0,100},{20,-1,1},{20,-1,7},{20,0,1}};
+  double shapeRanges[nJetShapeTypes][3] = {{30,0,30},{40,0,0.4},{100,0,1}};
   
   string typeName;
   string bgsName;
   string ptName;
   string centName;
+  string constitCutName;
   
-  int nbins;
-  int minX;
-  int maxX;
+  double nbins;
+  double minX;
+  double maxX;
   //Jet QA plots
   for (int i = 0; i < nJetQATypes; ++i)
   {
     typeName = QANames[i];
+    nbins = QAranges[i][0];
+    minX = QAranges[i][1];
+    maxX = QAranges[i][2];
     for (int j = 0; j < nJetQABGSMethods; ++j)
     {
       bgsName = BGSNames[j];
@@ -801,10 +776,11 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         for (int l = 0; l < nCentBins; ++l)
         {
           centName = CentBinNames[l];
-          nbins = QAranges[i][0];
-    minX = QAranges[i][1];
-    maxX = QAranges[i][2];
-          fHistJetQA[i][j][k][l] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            constitCutName = ConstitCutNames[m];
+            fHistJetQA[i][j][k][l][m] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), nbins, minX, maxX);
+          }
         }
       }
     }
@@ -813,6 +789,9 @@ void StJetShapeMTPMaker::DeclareHistograms() {
   for (int i = 0; i < nTrkQATypes; ++i)
   {
     typeName = QANames[i];
+    nbins = QAranges[i][0];
+    minX = QAranges[i][1];
+    maxX = QAranges[i][2];
     for (int j = 0; j < nTrkBGSMethods; ++j)
     {
       bgsName = BGSNames[j];
@@ -821,11 +800,12 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         ptName = PtBinNames[k];
         for (int l = 0; l < nCentBins; ++l)
         {
-    nbins = QAranges[i][0];
-    minX = QAranges[i][1];
-    maxX = QAranges[i][2];
           centName = CentBinNames[l];
-          fHistTrackQA[i][j][k][l] = new TH1F(("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            constitCutName = ConstitCutNames[m];
+            //fHistTrackQA[i][j][k][l][m] = new TH1F(("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), ("fHistTrk"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), nbins, minX, maxX);
+          }        
         }
       }
     }
@@ -835,6 +815,9 @@ void StJetShapeMTPMaker::DeclareHistograms() {
   for (int i = 0; i < nJetShapeTypes; ++i)
   {
     typeName = JetShapeNames[i];
+    nbins = shapeRanges[i][0];
+    minX = shapeRanges[i][1];
+    maxX = shapeRanges[i][2];
     for (int j = 0; j < nJetShapeBGSMethods; ++j)
     {
       bgsName = BGSNames[j];
@@ -843,126 +826,64 @@ void StJetShapeMTPMaker::DeclareHistograms() {
         ptName = PtBinNames[k];
         for (int l = 0; l < nCentBins; ++l)
         { 
-    nbins = shapeRanges[i][0];
-    minX = shapeRanges[i][1];
-    maxX = shapeRanges[i][2];
           centName = CentBinNames[l];
-          fHistJetShapes[i][j][k][l] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName).c_str(), nbins, minX, maxX);
+          for (int m = 0; m < nConstitCuts; ++m)
+          {
+            constitCutName = ConstitCutNames[m];
+            fHistJetShapes[i][j][k][l][m] = new TH1F(("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), ("fHistJet"+typeName+"_BGSubMethod:"+bgsName+"_PtBin:"+ptName+"_CentBin:"+centName+"_ConstitCut:"+constitCutName).c_str(), nbins, minX, maxX);
+          }
         }
       }
     }
   }
 
-  // =================================================================================================
-  //COPIED FROM JOEL'S "StMyAnalysisMaker3"; CAN BE CLEANED UP
-  // set up centrality bins for mixed events
-  // for pp we need mult bins for event mixing. Create binning here, to also make a histogram from it
 
-  // Setup for Au-Au collisions: cent bin size can only be 5 or 10% bins
-  // centrality bins for mixed events
-  int nCentralityBinsJS = 100 + 1;
-  double multJS = 1.0;
-  if(fCentBinSizeJS==5){ // will be most commonly used
-    nCentralityBinsJS = 20;
-    multJS = 5.0;
-  } else if(fCentBinSizeJS==10){
-    nCentralityBinsJS = 10;
-    multJS = 10.0;
-  } else if(fCentBinSizeJS==20){
-    nCentralityBinsJS = 5;
-    multJS = 20.0;
-  }
-
-  // this is temp as the above and various other implementation attempts would not work for both cases
-  // need to look into this, but a few hours already is too much.  Don't want to have to have this hard-coded
-  Int_t nCentBins = 8;
-  Double_t* centralityBins = GenerateFixedBinArray(nCentBins, 0., 8.);
-
-  // for AuAu data
-  // +1 to accomodate the fact that we define bins rather than array entries
-  const int nMultBinsJS = 26;  // Alt-2 - 27 values, 26 ranges
-  Double_t multBinsJS[nMultBinsJS + 1] = {0, 10,15,21,31,42,53,66,   80, 95, 112, 130, 149, 169, 190, 212, 235, 257, 280, 304, 329, 355, 382, 410, 439, 469, 800};
-  // TEST August 23, 2019
-  //  const int nMultBinsJS = 17; // 18 values, 17 ranges
-  //  Double_t multBinsJS[nMultBinsJS + 1] = {0, 10, 14, 21, 29, 40, 54, 71, 91, 115, 143, 176, 214, 257, 307, 364, 430, 800};
-  Double_t *multiplicityBinsJS = multBinsJS;
-
-  // cent bins for AuAu data
-  Int_t nCentBinsJS = 20;
-  Double_t* centralityBinsJSnew = GenerateFixedBinArray(nCentBinsJS, 0., 20.); 
-
-  // for pp data
-  const int nMultBinsJSpp = 7;
-  //Double_t multBinsJSpp[nMultBinsJSpp + 1] = {0.0, 4., 9, 15, 25, 35, 55, 100.0, 500.0};  // 8 (9)
-  Double_t multBinsJSpp[nMultBinsJSpp + 1] = {0.0, 4.0, 6.0, 8.0, 10.0, 13.0, 30., 100.};   // 7 (8)
-  Double_t *multiplicityBinsJSpp = multBinsJSpp;
-
-  // z-vertex bins for mixed events
-  Int_t nZvBins  = 20; // 4 cm wide, 40 for 2 cm wide
-  Double_t* zvBins = GenerateFixedBinArray(nZvBins, -40., 40.); // min/max doesn't matter as data is cut zmin/zmax
-
-  // event plane bins for mixed events
-  Int_t nEPBins = 6;   // default 6 from 0-180 degrees, (0 - pi) range
-  if(fnEPBins != 6) nEPBins = fnEPBins;
-  Double_t* epBins = GenerateFixedBinArray(nEPBins, 0., 1.0*pi);
-
-  // Event Mixing
-  Int_t trackDepth = fMixingTracks;
-  Int_t poolsize   = 1000;  // Maximum number of events, ignored in the present implementation of AliEventPoolManager
-  if(fDoUseMultBins) {
-    if(!doppAnalysis && !doUseEPBins) fPoolMgr = new StEventPoolManager(poolsize, trackDepth, nMultBinsJS, (Double_t*)multiplicityBinsJS, nZvBins, (Double_t*)zvBins); // not pp
-    if(!doppAnalysis &&  doUseEPBins) fPoolMgr = new StEventPoolManager(poolsize, trackDepth, nMultBinsJS, (Double_t*)multiplicityBinsJS, nZvBins, (Double_t*)zvBins, nEPBins, (Double_t*)epBins); // not pp
-    if( doppAnalysis) fPoolMgr = new StEventPoolManager(poolsize, trackDepth, nMultBinsJSpp, (Double_t*)multiplicityBinsJSpp, nZvBins, (Double_t*)zvBins); // is pp
-
-  } else { // centrality binning  
-    if(!doUseEPBins) fPoolMgr = new StEventPoolManager(poolsize, trackDepth, nCentBinsJS, (Double_t*)centralityBinsJSnew, nZvBins, (Double_t*)zvBins);
-    if( doUseEPBins) fPoolMgr = new StEventPoolManager(poolsize, trackDepth, nCentBinsJS, (Double_t*)centralityBinsJSnew, nZvBins, (Double_t*)zvBins, nEPBins, (Double_t*)epBins);
-  }
-  
-
-  // ================================================================================================
   SetSumw2();
 }
-//
-void StJetShapeMTPMaker::fillTrackQA(int bgMethod, TObjArray arr, int ptBin, int centBin){
+
+
+void StJetShapeMTPMaker::fillJetQA(double jetpt, double jeteta, double jetphi, double jetarea, int ptBin, int centBin, int constitCutBin){
+  //Fill Jet QA histos according to jetpt, centrality, and constituent cut
+  //centrality defaults to first bin for pp events
+
+  int bgMethod = 0;//bg subtraction no longer used
+
+  // fHistJetQA[0][bgMethod][0][0][constitCutBin]->Fill(jetpt);
+  // fHistJetQA[1][bgMethod][0][0][constitCutBin]->Fill(jeteta);
+  // fHistJetQA[2][bgMethod][0][0][constitCutBin]->Fill(jetphi);
+  // fHistJetQA[3][bgMethod][0][0][constitCutBin]->Fill(jetarea);
+
+  fHistJetQA[0][bgMethod][ptBin][centBin][constitCutBin]->Fill(jetpt);
+  fHistJetQA[1][bgMethod][ptBin][centBin][constitCutBin]->Fill(jeteta);
+  fHistJetQA[2][bgMethod][ptBin][centBin][constitCutBin]->Fill(jetphi);
+  fHistJetQA[3][bgMethod][ptBin][centBin][constitCutBin]->Fill(jetarea);
+}
+
+void StJetShapeMTPMaker::fillTrackQA(int bgMethod, TObjArray arr, int ptBin, int centBin, int constitCutBin){
   for (unsigned j = 0; j < arr.GetEntries(); j++) {
     StFemtoTrack *trk = static_cast<StFemtoTrack*>(arr.At(j));
     double trkpt = trk->Pt();
     double trketa = trk->Eta();
     double trkphi = trk->Phi_0_2pi();
 
-    fHistTrackQA[0][bgMethod][0][0]->Fill(trkpt);
-    fHistTrackQA[1][bgMethod][0][0]->Fill(trketa);
-    fHistTrackQA[2][bgMethod][0][0]->Fill(trkphi);
-
-    fHistTrackQA[0][bgMethod][ptBin][centBin]->Fill(trkpt);
-    fHistTrackQA[1][bgMethod][ptBin][centBin]->Fill(trketa);
-    fHistTrackQA[2][bgMethod][ptBin][centBin]->Fill(trkphi);
+//     fHistTrackQA[0][bgMethod][0][0][constitCutBin]->Fill(trkpt);
+//     fHistTrackQA[1][bgMethod][0][0][constitCutBin]->Fill(trketa);
+//     fHistTrackQA[2][bgMethod][0][0][constitCutBin]->Fill(trkphi);
+// 
+//     fHistTrackQA[0][bgMethod][ptBin][centBin][constitCutBin]->Fill(trkpt);
+//     fHistTrackQA[1][bgMethod][ptBin][centBin][constitCutBin]->Fill(trketa);
+//     fHistTrackQA[2][bgMethod][ptBin][centBin][constitCutBin]->Fill(trkphi);
   }
 }
 
-void StJetShapeMTPMaker::fillJetQA(double jetpt, double jeteta, double jetphi, double jetarea, int ptBin, int centBin){
-  int bgMethod = 0;
-  fHistJetQA[0][bgMethod][0][0]->Fill(jetpt);
-  fHistJetQA[1][bgMethod][0][0]->Fill(jeteta);
-  fHistJetQA[2][bgMethod][0][0]->Fill(jetphi);
-  fHistJetQA[3][bgMethod][0][0]->Fill(jetarea);
+void StJetShapeMTPMaker::fillJetShapes(int bgMethod, double LeSub, double Girth, double PtD, int ptBin, int centBin, int constitCutBin, double weight){
+  fHistJetShapes[0][bgMethod][0][0][constitCutBin]->Fill(LeSub, weight);
+  fHistJetShapes[1][bgMethod][0][0][constitCutBin]->Fill(Girth, weight);
+  fHistJetShapes[2][bgMethod][0][0][constitCutBin]->Fill(PtD, weight);
 
-  fHistJetQA[0][bgMethod][ptBin][centBin]->Fill(jetpt);
-  fHistJetQA[1][bgMethod][ptBin][centBin]->Fill(jeteta);
-  fHistJetQA[2][bgMethod][ptBin][centBin]->Fill(jetphi);
-  fHistJetQA[3][bgMethod][ptBin][centBin]->Fill(jetarea);
-}
-
-void StJetShapeMTPMaker::fillJetShapes(int bgMethod, double LeSub, double Girth, double PtD, int ptBin, int centBin, double weight){
-  
-  fHistJetShapes[0][bgMethod][0][0]->Fill(LeSub, weight);
-  fHistJetShapes[1][bgMethod][0][0]->Fill(Girth, weight);
-  fHistJetShapes[2][bgMethod][0][0]->Fill(PtD, weight);
-
-  fHistJetShapes[0][bgMethod][ptBin][centBin]->Fill(LeSub, weight);
-  fHistJetShapes[1][bgMethod][ptBin][centBin]->Fill(Girth, weight);
-  fHistJetShapes[2][bgMethod][ptBin][centBin]->Fill(PtD, weight);
+  fHistJetShapes[0][bgMethod][ptBin][centBin][constitCutBin]->Fill(LeSub, weight);
+  fHistJetShapes[1][bgMethod][ptBin][centBin][constitCutBin]->Fill(Girth, weight);
+  fHistJetShapes[2][bgMethod][ptBin][centBin][constitCutBin]->Fill(PtD, weight);
 }
 // write histograms
 //_____________________________________________________________________________
@@ -973,9 +894,11 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nJetQABGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    if (fHistJetQA[i][j][k][l]->GetEntries() > 0){
-          fHistJetQA[i][j][k][l]->Write();  
-    }
+          for (int m = 0; m < nConstitCuts; ++m){
+            if (fHistJetQA[i][j][k][l][m]->GetEntries() > 0){
+              fHistJetQA[i][j][k][l][m]->Write();
+            }
+          }
         }
       }
     }
@@ -985,9 +908,11 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nTrkBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    if (fHistTrackQA[i][j][k][l]->GetEntries() > 0){
-          fHistTrackQA[i][j][k][l]->Write();  
-    }
+          for (int m = 0; m < nConstitCuts; ++m){
+//             if (fHistTrackQA[i][j][k][l][m]->GetEntries() > 0){
+//              //fHistTrackQA[i][j][k][l][m]->Write();  
+//             }
+          }
         }
       }
     }
@@ -997,34 +922,33 @@ void StJetShapeMTPMaker::WriteHistograms() {
     for (int j = 0; j < nJetShapeBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-    //if (j == 3){
-      //cout<<"numEntriesRaw: "<<fHistJetShapes[i][j][k][l]->GetEntries()<<"numEntriesBG: "<<fHistJetShapes[i][2][k][l]->GetEntries()<<endl;
-      //fHistJetShapes[i][j][k][l]->Add(fHistJetShapes[i][2][k][l],-1);
-      //cout<<"j=3"<<"type: "<<i<<"numEntries: "<<fHistJetShapes[i][j][k][l]->GetEntries()<<endl;   }
-    if (fHistJetShapes[i][j][k][l]->GetEntries() > 0){
-      fHistJetShapes[i][j][k][l]->Write();  
-    }
+          for (int m = 0; m < nConstitCuts; ++m){
+            if (fHistJetShapes[i][j][k][l][m]->GetEntries() > 0){
+              fHistJetShapes[i][j][k][l][m]->Write();  
+            }
+          }
         }
       }
     }
   }
 }
-//
-// OLD user code says: //  Called every event after Make(). 
+
+
 //_____________________________________________________________________________
 void StJetShapeMTPMaker::Clear(Option_t *opt) {
   fJets->Clear();
 }
 
-//
-//
+
 // __________________________________________________________________________________
 void StJetShapeMTPMaker::SetSumw2() {
   for (int i = 0; i < nJetQATypes; ++i){
     for (int j = 0; j < nJetQABGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-          fHistJetQA[i][j][k][l]->Sumw2();        
+          for (int m = 0; m < nConstitCuts; ++m){
+            fHistJetQA[i][j][k][l][m]->Sumw2();       
+          } 
         }
       }
     }
@@ -1034,7 +958,9 @@ void StJetShapeMTPMaker::SetSumw2() {
     for (int j = 0; j < nTrkBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-          fHistTrackQA[i][j][k][l]->Sumw2();        
+          for (int m = 0; m < nConstitCuts; ++m){
+            //fHistTrackQA[i][j][k][l][m]->Sumw2();  
+          }      
         }
       }
     }
@@ -1045,7 +971,9 @@ void StJetShapeMTPMaker::SetSumw2() {
     for (int j = 0; j < nJetShapeBGSMethods; ++j){
       for (int k = 0; k < nPtBins; ++k){
         for (int l = 0; l < nCentBins; ++l){
-          fHistJetShapes[i][j][k][l]->Sumw2();        
+          for (int m = 0; m < nConstitCuts; ++m){
+            fHistJetShapes[i][j][k][l][m]->Sumw2();    
+          }    
         }
       }
     }
@@ -1079,52 +1007,5 @@ void StJetShapeMTPMaker::FillEmcTriggers() {
 
 
 
-TClonesArray* StJetShapeMTPMaker::CloneAndReduceTrackList()
-{
-  // create array for Femto tracks
-  TClonesArray *tracksClone = new TClonesArray("StFemtoTrack");
-
-  // construct variables, get # of tracks
-  int nMixTracks = mPicoDst->numberOfTracks();
-  int iterTrk = 0;
-
-  // loop over tracks
-  for(int i = 0; i < nMixTracks; i++) { 
-    // get track pointer
-    StPicoTrack *trk = static_cast<StPicoTrack*>(mPicoDst->track(i));
-    if(!trk){ continue; }
-
-    // acceptance and kinematic quality cuts
-    //if(!AcceptTrack(trk, Bfield, mVertex)) { continue; }
-
-    // get momentum vector of track - global or primary track
-    TVector3 mTrkMom;
-    if(doUsePrimTracks) {
-      if(!(trk->isPrimary())) continue; // get primary track vector
-      mTrkMom = trk->pMom();
-    } else {                            // get global track vector
-      mTrkMom = trk->gMom(mVertex, Bfield);
-    }
-
-    // track variables - used with alt method below
-    double pt = mTrkMom.Perp();
-    //double phi = mTrkMom.Phi();
-    //double eta = mTrkMom.PseudoRapidity();
-    //short charge = trk->charge();
-
-    // create StFemtoTracks out of accepted tracks - light-weight object for mixing
-    //  StFemtoTrack *t = new StFemtoTrack(pt, eta, phi, charge);
-    StFemtoTrack *t = new StFemtoTrack(trk, Bfield, mVertex, doUsePrimTracks);
-    if(!t) continue;
-
-    // add light-weight tracks passing cuts to TClonesArray
-    ((*tracksClone)[iterTrk]) =  t;
-
-    //delete t;
-    ++iterTrk;
-  } // end of looping through tracks
-
-  return tracksClone;
-}
 
 
